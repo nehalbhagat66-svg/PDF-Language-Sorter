@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Language Sorter</title>
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js">
+    </script>
+    <!-- pdf-lib -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js">
+    </script>
+    <!-- Tesseract.js -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js">
+    </script>
+
+    <style>
+        :root {
+            --bg: #f5f7fa;
+            --surface: #ffffff;
+            --surface-hover: #f0f2f5;
+            --text: #1a1a2e;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --primary: #4CAF50;
+            --primary-hover: #43a047;
+            --primary-light: #e8f5e9;
+            --hindi: #4CAF50;
+            --hindi-bg: #e8f5e9;
+            --marathi: #2196F3;
+            --marathi-bg: #e3f2fd;
+            --english: #FF9800;
+            --english-bg: #fff3e0;
+            --unknown: #9E9E9E;
+            --unknown-bg: #f5f5f5;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+            --radius: 12px;
+            --transition: 0.2s ease;
+        }
+
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface-hover: #334155;
+            --text: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --primary: #66bb6a;
+            --primary-light: #1b3d1b;
+            --hindi-bg: #1b3d1b;
+            --marathi-bg: #0d3b5e;
+            --english-bg: #3d2b0d;
+            --unknown-bg: #2d2d2d;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            transition: background var(--transition), color var(--transition);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            font-size: 28px;
+        }
+
+        .logo h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .theme-toggle {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background var(--transition);
+            color: var(--text);
+        }
+        .theme-toggle:hover {
+            background: var(--surface-hover);
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 24px;
+            margin-bottom: 16px;
+            transition: background var(--transition), box-shadow var(--transition);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition);
+            background: var(--surface);
+        }
+        .drop-zone:hover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .drop-zone.dragover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .drop-zone-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        .drop-zone p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        .drop-zone .browse-link {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+
+        .file-info {
+            display: none;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-top: 16px;
+        }
+        .file-info.visible {
+            display: flex;
+        }
+        .file-info-icon {
+            font-size: 32px;
+        }
+        .file-info-details {
+            flex: 1;
+        }
+        .file-info-name {
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .file-info-meta {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-top: 2px;
+        }
+        .file-info-remove {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 20px;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+        .file-info-remove:hover {
+            background: var(--surface-hover);
+            color: #ef4444;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all var(--transition);
+            width: 100%;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .btn-outline:hover:not(:disabled) {
+            background: var(--surface-hover);
+        }
+        .btn-success {
+            background: var(--hindi);
+            color: #fff;
+        }
+        .btn-success:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        .progress-section {
+            display: none;
+            margin-top: 16px;
+        }
+        .progress-section.visible {
+            display: block;
+        }
+        .progress-bar-track {
+            width: 100%;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #66bb6a);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-status {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .progress-percent {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .stat-card {
+            padding: 16px 8px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+        .stat-card .count {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        .stat-card.hindi {
+            background: var(--hindi-bg);
+            border-color: var(--hindi);
+        }
+        .stat-card.hindi .count {
+            color: var(--hindi);
+        }
+        .stat-card.marathi {
+            background: var(--marathi-bg);
+            border-color: var(--marathi);
+        }
+        .stat-card.marathi .count {
+            color: var(--marathi);
+        }
+        .stat-card.english {
+            background: var(--english-bg);
+            border-color: var(--english);
+        }
+        .stat-card.english .count {
+            color: var(--english);
+        }
+        .stat-card.unknown {
+            background: var(--unknown-bg);
+            border-color: var(--unknown);
+        }
+        .stat-card.unknown .count {
+            color: var(--unknown);
+        }
+
+        .results-section {
+            display: none;
+        }
+        .results-section.visible {
+            display: block;
+        }
+
+        .page-group {
+            margin-top: 16px;
+        }
+        .page-group-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        .page-group-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .page-group-numbers {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            padding-left: 18px;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-top: 1px solid var(--border);
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .summary-row strong {
+            color: var(--text);
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .actions .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .download-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-top: 8px;
+        }
+        .download-item-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .download-item-icon {
+            font-size: 24px;
+        }
+        .download-item-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .download-item-pages {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .download-item-btn {
+            padding: 6px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all var(--transition);
+        }
+        .download-item-btn:hover {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        .log-section {
+            margin-top: 16px;
+        }
+        .log-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 6px 0;
+            font-size: 13px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .log-entry .icon {
+            flex-shrink: 0;
+        }
+        .log-entry.success .icon {
+            color: var(--hindi);
+        }
+        .log-entry.error .icon {
+            color: #ef4444;
+        }
+        .log-entry.info .icon {
+            color: var(--marathi);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 12px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .actions .row {
+                grid-template-columns: 1fr;
+            }
+            .card {
+                padding: 16px;
+            }
+            .drop-zone {
+                padding: 32px 16px;
+            }
+            .logo h1 {
+                font-size: 17px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="logo-icon">🔤</span>
+                <h1>PDF Language Sorter</h1>
+            </div>
+            <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+        </header>
+
+        <!-- Upload -->
+        <div class="card">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">📄</div>
+                <p>Drop PDF here or <span class="browse-link" id="browseLink">browse</span></p>
+                <p style="font-size:12px;margin-top:4px">Supports PDF files up to 100MB</p>
+                <input type="file" id="fileInput" accept=".pdf,application/pdf" />
+            </div>
+            <div class="file-info" id="fileInfo">
+                <span class="file-info-icon">📁</span>
+                <div class="file-info-details">
+                    <div class="file-info-name" id="fileName">document.pdf</div>
+                    <div class="file-info-meta" id="fileMeta">0 KB</div>
+                </div>
+                <button class="file-info-remove" id="removeFile" title="Remove file">✕</button>
+            </div>
+        </div>
+
+        <!-- Analyze -->
+        <div class="card" id="analyzeCard" style="display:none">
+            <button class="btn btn-primary" id="analyzeBtn">🔍 Analyze PDF</button>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-status">
+                    <span id="progressStatus">Initializing...</span>
+                    <span class="progress-percent" id="progressPercent">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="card results-section" id="resultsSection">
+            <h2 style="font-size:18px;margin-bottom:4px">Analysis Results</h2>
+            <p style="font-size:13px;color:var(--text-secondary)" id="resultSubtitle"></p>
+
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card hindi">
+                    <div class="count" id="hindiCount">0</div>
+                    <div class="label">Hindi Pages</div>
+                </div>
+                <div class="stat-card marathi">
+                    <div class="count" id="marathiCount">0</div>
+                    <div class="label">Marathi Pages</div>
+                </div>
+                <div class="stat-card english">
+                    <div class="count" id="englishCount">0</div>
+                    <div class="label">English Pages</div>
+                </div>
+                <div class="stat-card unknown">
+                    <div class="count" id="unknownCount">0</div>
+                    <div class="label">Unknown</div>
+                </div>
+            </div>
+
+            <div id="pageGroups"></div>
+
+            <div class="summary-row">
+                <span>Total Pages: <strong id="totalPagesSummary">0</strong></span>
+                <span>Processing: <strong id="processingTimeSummary">—</strong></span>
+            </div>
+
+            <div class="actions" id="generateActions">
+                <button class="btn btn-success" id="generateBtn">📥 Generate &amp; Download PDFs</button>
+                <div class="row">
+                    <button class="btn btn-outline" id="exportCsvBtn">📊 Export CSV</button>
+                    <button class="btn btn-outline" id="resetBtn">🔄 New File</button>
+                </div>
+            </div>
+
+            <div id="downloadsSection" style="margin-top:16px;display:none"></div>
+        </div>
+
+        <!-- Processing Log -->
+        <div class="card" id="logCard" style="display:none">
+            <h3 style="font-size:15px;margin-bottom:8px">📋 Processing Log</h3>
+            <div class="log-section" id="logEntries"></div>
+        </div>
+
+        <!-- Error toast -->
+        <div id="toast" style="
+            position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+            background:#ef4444;color:#fff;padding:12px 24px;border-radius:10px;
+            font-size:14px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+            display:none;z-index:999;max-width:90vw;text-align:center;
+        "></div>
+    </div>
+
+    <script>
+        (() => {
+            'use strict';
+
+            /* ─── State ─── */
+            const state = {
+                file: null,
+                fileName: '',
+                fileSize: 0,
+                fileBytes: null,
+                totalPages: 0,
+                pageTexts: [],
+                pageLanguages: [],
+                pageDetails: [],
+                hindiPages: [],
+                marathiPages: [],
+                englishPages: [],
+                unknownPages: [],
+                processingTime: 0,
+                isProcessing: false,
+                isAnalyzed: false,
+                generatedBlobs: {},
+                logs: [],
+            };
+
+            /* ─── DOM refs ─── */
+            const $ = (id) => document.getElementById(id);
+            const dropZone = $('dropZone');
+            const fileInput = $('fileInput');
+            const browseLink = $('browseLink');
+            const fileInfo = $('fileInfo');
+            const fileName = $('fileName');
+            const fileMeta = $('fileMeta');
+            const removeFile = $('removeFile');
+            const analyzeCard = $('analyzeCard');
+            const analyzeBtn = $('analyzeBtn');
+            const progressSection = $('progressSection');
+            const progressFill = $('progressFill');
+            const progressStatus = $('progressStatus');
+            const progressPercent = $('progressPercent');
+            const resultsSection = $('resultsSection');
+            const resultSubtitle = $('resultSubtitle');
+            const statsGrid = $('statsGrid');
+            const hindiCount = $('hindiCount');
+            const marathiCount = $('marathiCount');
+            const englishCount = $('englishCount');
+            const unknownCount = $('unknownCount');
+            const pageGroups = $('pageGroups');
+            const totalPagesSummary = $('totalPagesSummary');
+            const processingTimeSummary = $('processingTimeSummary');
+            const generateActions = $('generateActions');
+            const generateBtn = $('generateBtn');
+            const exportCsvBtn = $('exportCsvBtn');
+            const resetBtn = $('resetBtn');
+            const downloadsSection = $('downloadsSection');
+            const logCard = $('logCard');
+            const logEntries = $('logEntries');
+            const themeToggle = $('themeToggle');
+            const toast = $('toast');
+
+            /* ─── Theme ─── */
+            function getPreferredTheme() {
+                return window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light';
+            }
+            let currentTheme = localStorage.getItem('theme') || getPreferredTheme();
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            themeToggle.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+
+            themeToggle.addEventListener('click', () => {
+                currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', currentTheme);
+                localStorage.setItem('theme', currentTheme);
+                themeToggle.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+            });
+
+            /* ─── Toast ─── */
+            let toastTimer;
+
+            function showToast(msg, dur = 4000) {
+                toast.textContent = msg;
+                toast.style.display = 'block';
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => { toast.style.display = 'none'; }, dur);
+            }
+
+            /* ─── Logging ─── */
+            function addLog(type, msg) {
+                const icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+                state.logs.push({ type, msg, time: new Date() });
+                logCard.style.display = 'block';
+                const div = document.createElement('div');
+                div.className = `log-entry ${type}`;
+                div.innerHTML = `<span class="icon">${icons[type]||'•'}</span><span>${msg}</span>`;
+                logEntries.prepend(div);
+                if (logEntries.children.length > 50) {
+                    logEntries.removeChild(logEntries.lastChild);
+                }
+            }
+
+            /* ─── PDF.js worker ─── */
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            /* ─── File handling ─── */
+            function handleFile(file) {
+                if (!file) return;
+                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                    showToast('Please select a valid PDF file');
+                    return;
+                }
+                if (file.size > 100 * 1024 * 1024) {
+                    showToast('File too large. Maximum size is 100MB.');
+                    return;
+                }
+                resetState();
+                state.file = file;
+                state.fileName = file.name;
+                state.fileSize = file.size;
+                fileName.textContent = file.name;
+                fileMeta.textContent = formatSize(file.size);
+                fileInfo.classList.add('visible');
+                analyzeCard.style.display = 'block';
+                analyzeBtn.disabled = false;
+                addLog('info', `Selected file: ${file.name} (${formatSize(file.size)})`);
+            }
+
+            function resetState() {
+                state.file = null;
+                state.fileName = '';
+                state.fileSize = 0;
+                state.fileBytes = null;
+                state.totalPages = 0;
+                state.pageTexts = [];
+                state.pageLanguages = [];
+                state.pageDetails = [];
+                state.hindiPages = [];
+                state.marathiPages = [];
+                state.englishPages = [];
+                state.unknownPages = [];
+                state.processingTime = 0;
+                state.isProcessing = false;
+                state.isAnalyzed = false;
+                state.generatedBlobs = {};
+                state.logs = [];
+                progressSection.classList.remove('visible');
+                resultsSection.classList.remove('visible');
+                downloadsSection.style.display = 'none';
+                downloadsSection.innerHTML = '';
+                logEntries.innerHTML = '';
+                logCard.style.display = 'none';
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = '🔍 Analyze PDF';
+            }
+
+            function formatSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+                return (bytes / 1073741824).toFixed(1) + ' GB';
+            }
+
+            /* ─── Drop zone ─── */
+            dropZone.addEventListener('click', () => fileInput.click());
+            browseLink.addEventListener('click', (e) => { e.stopPropagation();
+                fileInput.click(); });
+            fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+            removeFile.addEventListener('click', () => {
+                fileInput.value = '';
+                fileInfo.classList.remove('visible');
+                analyzeCard.style.display = 'none';
+                progressSection.classList.remove('visible');
+                resultsSection.classList.remove('visible');
+                downloadsSection.style.display = 'none';
+                logEntries.innerHTML = '';
+                logCard.style.display = 'none';
+                state.file = null;
+            });
+
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault();
+                dropZone.classList.add('dragover'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+            });
+
+            /* ─── Marathi markers ─── */
+            const MARATHI_MARKERS = new Set([
+                'आहे', 'होते', 'करण्यासाठी', 'म्हणून', 'त्यामुळे',
+                'साठी', 'कडे', 'कडून', 'पर्यंत', 'बद्दल',
+                'वर', 'खाली', 'आत', 'बाहेर', 'जवळ',
+                'पासून', 'मध्ये', 'शिवाय', 'सह', 'का',
+                'चा', 'ची', 'चे', 'च्या', 'ना', 'नी',
+                'होता', 'होती', 'आम्ही', 'तुम्ही', 'त्यांनी',
+                'आमचे', 'तुमचे'
+            ]);
+
+            const HINDI_MARKERS = new Set([
+                'है', 'हैं', 'का', 'की', 'के', 'में', 'को',
+                'से', 'और', 'कि', 'यह', 'वह', 'ये', 'वे',
+                'अपना', 'तुम्हारा', 'हमारा', 'मैं', 'तू', 'हम',
+                'आप', 'तुम', 'उनका', 'इसका'
+            ]);
+
+            function countMarathiWords(text) {
+                const words = text.split(/[\s\p{P}]+/u);
+                return words.filter(w => MARATHI_MARKERS.has(w)).length;
+            }
+
+            function countHindiMarkers(text) {
+                const words = text.split(/[\s\p{P}]+/u);
+                return words.filter(w => HINDI_MARKERS.has(w)).length;
+            }
+
+            function detectLanguageByText(text) {
+                if (!text.trim()) return { lang: 'unknown', confidence: 0, isMixed: false };
+
+                let devanagari = 0,
+                    latin = 0;
+                for (const ch of text) {
+                    const cp = ch.codePointAt(0);
+                    if (cp >= 0x0900 && cp <= 0x097F) devanagari++;
+                    else if ((cp >= 0x41 && cp <= 0x5A) || (cp >= 0x61 && cp <= 0x7A)) latin++;
+                }
+                const total = devanagari + latin;
+                if (total === 0) return { lang: 'unknown', confidence: 0, isMixed: false };
+
+                if (devanagari > latin) {
+                    const marathiScore = countMarathiWords(text);
+                    const hindiScore = countHindiMarkers(text);
+                    const confidence = Math.max(devanagari / total, 0.5);
+                    if (marathiScore >= 2 && marathiScore > hindiScore) {
+                        return { lang: 'marathi', confidence, isMixed: hindiScore > 0 };
+                    }
+                    return { lang: 'hindi', confidence, isMixed: marathiScore >= 2 };
+                } else if (latin > devanagari) {
+                    return { lang: 'english', confidence: latin / total, isMixed: devanagari > 0 };
+                }
+                return { lang: 'unknown', confidence: 0, isMixed: false };
+            }
+
+            /* ─── Analyze ─── */
+            analyzeBtn.addEventListener('click', async () => {
+                if (!state.file || state.isProcessing) return;
+                await runAnalysis();
+            });
+
+            async function runAnalysis() {
+                state.isProcessing = true;
+                state.isAnalyzed = false;
+                analyzeBtn.disabled = true;
+                analyzeBtn.textContent = '⏳ Processing...';
+                progressSection.classList.add('visible');
+                setProgress(0, 'Reading PDF file...');
+                resultsSection.classList.remove('visible');
+                downloadsSection.style.display = 'none';
+                downloadsSection.innerHTML = '';
+                state.generatedBlobs = {};
+
+                const startTime = performance.now();
+
+                try {
+                    /* Read file */
+                    const arrayBuffer = await state.file.arrayBuffer();
+                    state.fileBytes = new Uint8Array(arrayBuffer);
+                    addLog('info', `PDF loaded (${formatSize(arrayBuffer.byteLength)})`);
+
+                    /* Parse with PDF.js */
+                    setProgress(5, 'Parsing PDF structure...');
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+                    state.totalPages = pdf.numPages;
+                    addLog('info', `PDF has ${state.totalPages} pages`);
+
+                    /* Extract text from each page */
+                    state.pageTexts = [];
+                    state.pageLanguages = [];
+                    state.pageDetails = [];
+                    const needsOcr = [];
+
+                    for (let i = 1; i <= state.totalPages; i++) {
+                        const pct = 5 + ((i - 1) / state.totalPages) * 55;
+                        setProgress(pct, `Extracting text from page ${i}/${state.totalPages}...`);
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        let text = content.items.map(item => item.str).join(' ').trim();
+
+                        if (!text) {
+                            needsOcr.push(i);
+                            state.pageTexts.push('');
+                            state.pageLanguages.push(null);
+                            state.pageDetails.push({ page: i, text: '', hadOcr: true, lang: null, confidence: 0,
+                                isMixed: false });
+                        } else {
+                            state.pageTexts.push(text);
+                            const detection = detectLanguageByText(text);
+                            state.pageLanguages.push(detection.lang);
+                            state.pageDetails.push({
+                                page: i,
+                                text: text,
+                                hadOcr: false,
+                                lang: detection.lang,
+                                confidence: detection.confidence,
+                                isMixed: detection.isMixed
+                            });
+                        }
+                    }
+
+                    /* Perform OCR on pages with no text */
+                    if (needsOcr.length > 0) {
+                        addLog('info', `${needsOcr.length} pages need OCR. Initializing Tesseract.js...`);
+                        const ocrStart = performance.now();
+                        const worker = await Tesseract.createWorker('hin');
+
+                        for (let idx = 0; idx < needsOcr.length; idx++) {
+                            const pg = needsOcr[idx];
+                            const pct = 60 + (idx / needsOcr.length) * 30;
+                            setProgress(pct, `OCR: page ${pg}/${state.totalPages} (${idx+1}/${needsOcr.length})...`);
+
+                            const page = await pdf.getPage(pg);
+                            const viewport = page.getViewport({ scale: 2.0 });
+                            const canvas = document.createElement('canvas');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+                            const ctx = canvas.getContext('2d');
+                            await page.render({ canvasContext: ctx, viewport }).promise;
+
+                            const { data: { text } } = await worker.recognize(canvas);
+                            const cleaned = text.trim();
+
+                            state.pageTexts[pg - 1] = cleaned;
+                            const detection = detectLanguageByText(cleaned);
+                            state.pageLanguages[pg - 1] = detection.lang;
+                            state.pageDetails[pg - 1] = {
+                                page: pg,
+                                text: cleaned,
+                                hadOcr: true,
+                                lang: detection.lang,
+                                confidence: detection.confidence,
+                                isMixed: detection.isMixed
+                            };
+                        }
+
+                        await worker.terminate();
+                        const ocrTime = ((performance.now() - ocrStart) / 1000).toFixed(1);
+                        addLog('info', `OCR completed in ${ocrTime}s`);
+                    }
+
+                    /* Classify pages */
+                    setProgress(92, 'Classifying pages by language...');
+                    state.hindiPages = [];
+                    state.marathiPages = [];
+                    state.englishPages = [];
+                    state.unknownPages = [];
+
+                    for (const d of state.pageDetails) {
+                        switch (d.lang) {
+                            case 'hindi':
+                                state.hindiPages.push(d.page);
+                                break;
+                            case 'marathi':
+                                state.marathiPages.push(d.page);
+                                break;
+                            case 'english':
+                                state.englishPages.push(d.page);
+                                break;
+                            default:
+                                state.unknownPages.push(d.page);
+                        }
+                    }
+
+                    state.processingTime = performance.now() - startTime;
+                    setProgress(100, 'Analysis complete!');
+                    addLog('success',
+                        `Analysis complete: ${state.hindiPages.length} Hindi, ${state.marathiPages.length} Marathi, ${state.englishPages.length} English pages`
+                        );
+
+                    /* Display results */
+                    displayResults();
+                    state.isProcessing = false;
+                    state.isAnalyzed = true;
+                    analyzeBtn.disabled = false;
+                    analyzeBtn.textContent = '🔍 Re-analyze';
+
+                } catch (err) {
+                    console.error(err);
+                    state.isProcessing = false;
+                    analyzeBtn.disabled = false;
+                    analyzeBtn.textContent = '🔍 Analyze PDF';
+                    progressSection.classList.remove('visible');
+                    showToast('Error: ' + (err.message || 'Unknown error'));
+                    addLog('error', 'Error: ' + (err.message || 'Unknown error'));
+                }
+            }
+
+            function setProgress(pct, status) {
+                progressFill.style.width = Math.min(pct, 100) + '%';
+                progressStatus.textContent = status || '';
+                progressPercent.textContent = Math.round(pct) + '%';
+            }
+
+            /* ─── Display Results ─── */
+            function displayResults() {
+                resultsSection.classList.add('visible');
+
+                const total = state.totalPages;
+                hindiCount.textContent = state.hindiPages.length;
+                marathiCount.textContent = state.marathiPages.length;
+                englishCount.textContent = state.englishPages.length;
+                unknownCount.textContent = state.unknownPages.length;
+                totalPagesSummary.textContent = total;
+                processingTimeSummary.textContent = (state.processingTime / 1000).toFixed(1) + 's';
+                resultSubtitle.textContent =
+                    `${total} pages · ${(state.processingTime/1000).toFixed(1)}s · ${state.fileName}`;
+
+                /* Build page groups */
+                pageGroups.innerHTML = '';
+                const groups = [
+                    { label: 'Hindi', pages: state.hindiPages, color: '#4CAF50' },
+                    { label: 'Marathi', pages: state.marathiPages, color: '#2196F3' },
+                    { label: 'English', pages: state.englishPages, color: '#FF9800' },
+                    { label: 'Unknown', pages: state.unknownPages, color: '#9E9E9E' },
+                ];
+
+                for (const g of groups) {
+                    if (g.pages.length === 0) continue;
+                    const div = document.createElement('div');
+                    div.className = 'page-group';
+                    div.innerHTML = `
+                        <div class="page-group-header">
+                            <span class="page-group-dot" style="background:${g.color}"></span>
+                            ${g.label} (${g.pages.length})
+                        </div>
+                        <div class="page-group-numbers">${g.pages.join(', ')}</div>
+                    `;
+                    pageGroups.appendChild(div);
+                }
+
+                /* Show OCR indicator */
+                const ocrCount = state.pageDetails.filter(d => d.hadOcr).length;
+                if (ocrCount > 0) {
+                    const note = document.createElement('p');
+                    note.style.cssText =
+                        'font-size:12px;color:var(--text-secondary);margin-top:8px;padding:8px 12px;background:var(--unknown-bg);border-radius:8px';
+                    note.textContent = `ℹ️ OCR was performed on ${ocrCount} page(s) with no selectable text.`;
+                    pageGroups.appendChild(note);
+                }
+
+                generateBtn.disabled = false;
+            }
+
+            /* ─── Generate PDFs ─── */
+            generateBtn.addEventListener('click', async () => {
+                if (state.isProcessing || !state.isAnalyzed) return;
+                await generatePDFs();
+            });
+
+            async function generatePDFs() {
+                const langs = [
+                    { key: 'hindi', label: 'Hindi', pages: state.hindiPages },
+                    { key: 'marathi', label: 'Marathi', pages: state.marathiPages },
+                    { key: 'english', label: 'English', pages: state.englishPages },
+                ];
+
+                const baseName = state.fileName.replace(/\.pdf$/i, '');
+                generateBtn.disabled = true;
+                generateBtn.textContent = '⏳ Generating PDFs...';
+                downloadsSection.style.display = 'none';
+                downloadsSection.innerHTML = '';
+
+                try {
+                    for (const lang of langs) {
+                        if (lang.pages.length === 0) continue;
+                        addLog('info',
+                        `Generating ${lang.label} PDF (${lang.pages.length} pages)...`);
+                        setProgress(0, `Creating ${lang.label} PDF...`);
+
+                        const srcDoc = await PDFLib.PDFDocument.load(state.fileBytes);
+                        const newDoc = await PDFLib.PDFDocument.create();
+
+                        const indices = lang.pages.map(p => p - 1);
+                        const copied = await newDoc.copyPages(srcDoc, indices);
+                        for (const page of copied) {
+                            newDoc.addPage(page);
+                        }
+
+                        const bytes = await newDoc.save();
+                        const blob = new Blob([bytes], { type: 'application/pdf' });
+                        state.generatedBlobs[lang.key] = { blob, label: lang.label, pages: lang.pages.length };
+                        addLog('success', `${lang.label}.pdf generated (${lang.pages.length} pages)`);
+                    }
+
+                    /* Show downloads */
+                    showDownloads(baseName);
+                    generateBtn.textContent = '✅ Regenerate PDFs';
+                    generateBtn.disabled = false;
+                    progressSection.classList.remove('visible');
+                    addLog('success', 'All PDFs generated successfully!');
+
+                } catch (err) {
+                    console.error(err);
+                    showToast('Error generating PDFs: ' + (err.message || 'Unknown'));
+                    addLog('error', 'PDF generation failed: ' + (err.message || 'Unknown'));
+                    generateBtn.textContent = '📥 Generate & Download PDFs';
+                    generateBtn.disabled = false;
+                }
+            }
+
+            function showDownloads(baseName) {
+                downloadsSection.style.display = 'block';
+                downloadsSection.innerHTML = '';
+
+                const langs = ['hindi', 'marathi', 'english'];
+                let html = '<h3 style="font-size:15px;margin-bottom:12px">📥 Download Generated PDFs</h3>';
+
+                const colors = { hindi: '#4CAF50', marathi: '#2196F3', english: '#FF9800' };
+                const icons = { hindi: '🟢', marathi: '🔵', english: '🟠' };
+
+                for (const key of langs) {
+                    const g = state.generatedBlobs[key];
+                    if (!g) continue;
+                    const color = colors[key];
+                    const icon = icons[key];
+                    html += `
+                        <div class="download-item">
+                            <div class="download-item-info">
+                                <span class="download-item-icon">${icon}</span>
+                                <div>
+                                    <div class="download-item-name">${baseName}_${g.label}.pdf</div>
+                                    <div class="download-item-pages">${g.pages} page${g.pages>1?'s':''}</div>
+                                </div>
+                            </div>
+                            <button class="download-item-btn" data-lang="${key}">Download</button>
+                        </div>
+                    `;
+                }
+
+                /* Zip all button */
+                if (Object.keys(state.generatedBlobs).length > 1) {
+                    html += `
+                        <button class="btn btn-primary" id="downloadAllBtn" style="margin-top:12px">
+                            📦 Download All as ZIP
+                        </button>
+                    `;
+                }
+
+                downloadsSection.innerHTML = html;
+
+                /* Download handlers */
+                downloadsSection.querySelectorAll('.download-item-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const key = btn.dataset.lang;
+                        const g = state.generatedBlobs[key];
+                        if (!g) return;
+                        const url = URL.createObjectURL(g.blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${baseName}_${g.label}.pdf`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        addLog('info', `Downloaded ${baseName}_${g.label}.pdf`);
+                    });
+                });
+
+                const downloadAllBtn = document.getElementById('downloadAllBtn');
+                if (downloadAllBtn) {
+                    downloadAllBtn.addEventListener('click', async () => {
+                        try {
+                            const JSZip = window.JSZip;
+                            if (!JSZip) {
+                                const script = document.createElement('script');
+                                script.src =
+                                'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                                await new Promise((res, rej) => {
+                                    script.onload = res;
+                                    script.onerror = rej;
+                                    document.head.appendChild(script);
+                                });
+                            }
+                            const zip = new JSZip();
+                            for (const [key, g] of Object.entries(state.generatedBlobs)) {
+                                zip.file(`${baseName}_${g.label}.pdf`, g.blob);
+                            }
+                            const zipBlob = await zip.generateAsync({ type: 'blob' });
+                            const url = URL.createObjectURL(zipBlob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${baseName}_sorted.zip`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                            addLog('info', 'Downloaded ZIP archive');
+                        } catch (e) {
+                            showToast('Failed to create ZIP. Download individually.');
+                        }
+                    });
+                }
+            }
+
+            /* ─── Export CSV ─── */
+            exportCsvBtn.addEventListener('click', () => {
+                if (!state.isAnalyzed) { showToast('Analyze a PDF first'); return; }
+                let csv = 'Page Number,Language,Confidence,OCR Used,Mixed Language,Text Preview\n';
+                for (const d of state.pageDetails) {
+                    const preview = d.text.replace(/"/g, '""').replace(/\n/g, ' ').slice(0, 100);
+                    csv +=
+                        `${d.page},${d.lang||'unknown'},${(d.confidence*100).toFixed(0)}%,${d.hadOcr},${d.isMixed},"${preview}"\n`;
+                }
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const baseName = state.fileName.replace(/\.pdf$/i, '');
+                a.href = url;
+                a.download = `${baseName}_report.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                addLog('info', 'Exported CSV report');
+            });
+
+            /* ─── Reset ─── */
+            resetBtn.addEventListener('click', () => {
+                fileInput.value = '';
+                fileInfo.classList.remove('visible');
+                analyzeCard.style.display = 'none';
+                progressSection.classList.remove('visible');
+                resultsSection.classList.remove('visible');
+                downloadsSection.style.display = 'none';
+                logEntries.innerHTML = '';
+                logCard.style.display = 'none';
+                state.file = null;
+                state.fileBytes = null;
+                state.generatedBlobs = {};
+                state.logs = [];
+            });
+
+            /* ─── Init ─── */
+            console.log('PDF Language Sorter ready');
+            setProgress(0, 'Ready');
+
+        })();
+    </script>
+</body>
+</html>
