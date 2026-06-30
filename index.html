@@ -14,6 +14,9 @@
     <!-- Tesseract.js -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js">
     </script>
+    <!-- JSZip for bulk download -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
+    </script>
 
     <style>
         :root {
@@ -782,13 +785,27 @@
                 'आप', 'तुम', 'उनका', 'इसका'
             ]);
 
+            function splitWords(text) {
+                const tokens = [];
+                let current = '';
+                for (const ch of text) {
+                    if (/[\s\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F\uff00-\uffef.,!?;:()\[\]{}"'«»\-–—]/.test(ch)) {
+                        if (current) { tokens.push(current); current = ''; }
+                    } else {
+                        current += ch;
+                    }
+                }
+                if (current) tokens.push(current);
+                return tokens;
+            }
+
             function countMarathiWords(text) {
-                const words = text.split(/[\s\p{P}]+/u);
+                const words = splitWords(text);
                 return words.filter(w => MARATHI_MARKERS.has(w)).length;
             }
 
             function countHindiMarkers(text) {
-                const words = text.split(/[\s\p{P}]+/u);
+                const words = splitWords(text);
                 return words.filter(w => HINDI_MARKERS.has(w)).length;
             }
 
@@ -826,6 +843,11 @@
             });
 
             async function runAnalysis() {
+                if (typeof pdfjsLib === 'undefined' || typeof PDFLib === 'undefined') {
+                    showToast('Required libraries failed to load. Check internet connection and refresh.');
+                    return;
+                }
+
                 state.isProcessing = true;
                 state.isAnalyzed = false;
                 analyzeBtn.disabled = true;
@@ -847,7 +869,7 @@
 
                     /* Parse with PDF.js */
                     setProgress(5, 'Parsing PDF structure...');
-                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0), useSystemFonts: true }).promise;
                     state.totalPages = pdf.numPages;
                     addLog('info', `PDF has ${state.totalPages} pages`);
 
@@ -889,40 +911,54 @@
                     if (needsOcr.length > 0) {
                         addLog('info', `${needsOcr.length} pages need OCR. Initializing Tesseract.js...`);
                         const ocrStart = performance.now();
-                        const worker = await Tesseract.createWorker('hin');
+                        setProgress(60, `Initializing OCR engine (loading Devanagari data)...`);
 
-                        for (let idx = 0; idx < needsOcr.length; idx++) {
-                            const pg = needsOcr[idx];
-                            const pct = 60 + (idx / needsOcr.length) * 30;
-                            setProgress(pct, `OCR: page ${pg}/${state.totalPages} (${idx+1}/${needsOcr.length})...`);
-
-                            const page = await pdf.getPage(pg);
-                            const viewport = page.getViewport({ scale: 2.0 });
-                            const canvas = document.createElement('canvas');
-                            canvas.width = viewport.width;
-                            canvas.height = viewport.height;
-                            const ctx = canvas.getContext('2d');
-                            await page.render({ canvasContext: ctx, viewport }).promise;
-
-                            const { data: { text } } = await worker.recognize(canvas);
-                            const cleaned = text.trim();
-
-                            state.pageTexts[pg - 1] = cleaned;
-                            const detection = detectLanguageByText(cleaned);
-                            state.pageLanguages[pg - 1] = detection.lang;
-                            state.pageDetails[pg - 1] = {
-                                page: pg,
-                                text: cleaned,
-                                hadOcr: true,
-                                lang: detection.lang,
-                                confidence: detection.confidence,
-                                isMixed: detection.isMixed
-                            };
+                        let worker;
+                        try {
+                            worker = await Tesseract.createWorker('hin');
+                        } catch (e) {
+                            addLog('error', 'OCR engine failed to initialize: ' + e.message);
+                            addLog('info', 'Continuing without OCR — pages will be marked unknown.');
+                            needsOcr.length = 0;
                         }
 
-                        await worker.terminate();
-                        const ocrTime = ((performance.now() - ocrStart) / 1000).toFixed(1);
-                        addLog('info', `OCR completed in ${ocrTime}s`);
+                        if (worker) {
+                            for (let idx = 0; idx < needsOcr.length; idx++) {
+                                const pg = needsOcr[idx];
+                                const pct = 60 + (idx / needsOcr.length) * 30;
+                                setProgress(pct, `OCR: page ${pg}/${state.totalPages} (${idx+1}/${needsOcr.length})...`);
+
+                                try {
+                                    const page = await pdf.getPage(pg);
+                                    const viewport = page.getViewport({ scale: 2.0 });
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = viewport.width;
+                                    canvas.height = viewport.height;
+                                    const ctx = canvas.getContext('2d');
+                                    await page.render({ canvasContext: ctx, viewport }).promise;
+
+                                    const { data: { text } } = await worker.recognize(canvas);
+                                    const cleaned = text.trim();
+
+                                    state.pageTexts[pg - 1] = cleaned;
+                                    const detection = detectLanguageByText(cleaned);
+                                    state.pageLanguages[pg - 1] = detection.lang;
+                                    state.pageDetails[pg - 1] = {
+                                        page: pg,
+                                        text: cleaned,
+                                        hadOcr: true,
+                                        lang: detection.lang,
+                                        confidence: detection.confidence,
+                                        isMixed: detection.isMixed
+                                    };
+                                } catch (e) {
+                                    addLog('warning', `OCR failed for page ${pg}: ${e.message}`);
+                                }
+                            }
+                            await worker.terminate();
+                            const ocrTime = ((performance.now() - ocrStart) / 1000).toFixed(1);
+                            addLog('info', `OCR completed in ${ocrTime}s`);
+                        }
                     }
 
                     /* Classify pages */
@@ -1041,22 +1077,36 @@
                     { key: 'english', label: 'English', pages: state.englishPages },
                 ];
 
+                const hasPages = langs.some(l => l.pages.length > 0);
+                if (!hasPages) {
+                    showToast('No pages to generate');
+                    return;
+                }
+
                 const baseName = state.fileName.replace(/\.pdf$/i, '');
                 generateBtn.disabled = true;
                 generateBtn.textContent = '⏳ Generating PDFs...';
                 downloadsSection.style.display = 'none';
                 downloadsSection.innerHTML = '';
+                progressSection.classList.add('visible');
 
                 try {
-                    for (const lang of langs) {
-                        if (lang.pages.length === 0) continue;
-                        addLog('info',
-                        `Generating ${lang.label} PDF (${lang.pages.length} pages)...`);
-                        setProgress(0, `Creating ${lang.label} PDF...`);
+                    /* Load source document once */
+                    setProgress(5, 'Loading source PDF...');
+                    const srcDoc = await PDFLib.PDFDocument.load(state.fileBytes);
 
-                        const srcDoc = await PDFLib.PDFDocument.load(state.fileBytes);
+                    for (let li = 0; li < langs.length; li++) {
+                        const lang = langs[li];
+                        if (lang.pages.length === 0) {
+                            addLog('info', `No ${lang.label} pages found — skipping`);
+                            continue;
+                        }
+
+                        const pct = 10 + (li / langs.length) * 80;
+                        setProgress(pct, `Creating ${lang.label} PDF (${lang.pages.length} pages)...`);
+                        addLog('info', `Generating ${lang.label} PDF (${lang.pages.length} pages)...`);
+
                         const newDoc = await PDFLib.PDFDocument.create();
-
                         const indices = lang.pages.map(p => p - 1);
                         const copied = await newDoc.copyPages(srcDoc, indices);
                         for (const page of copied) {
@@ -1066,10 +1116,12 @@
                         const bytes = await newDoc.save();
                         const blob = new Blob([bytes], { type: 'application/pdf' });
                         state.generatedBlobs[lang.key] = { blob, label: lang.label, pages: lang.pages.length };
-                        addLog('success', `${lang.label}.pdf generated (${lang.pages.length} pages)`);
+                        addLog('success', `${lang.label}.pdf (${lang.pages.length} pages)`);
                     }
 
-                    /* Show downloads */
+                    srcDoc.close();
+
+                    setProgress(100, 'Done!');
                     showDownloads(baseName);
                     generateBtn.textContent = '✅ Regenerate PDFs';
                     generateBtn.disabled = false;
@@ -1082,6 +1134,7 @@
                     addLog('error', 'PDF generation failed: ' + (err.message || 'Unknown'));
                     generateBtn.textContent = '📥 Generate & Download PDFs';
                     generateBtn.disabled = false;
+                    progressSection.classList.remove('visible');
                 }
             }
 
@@ -1145,16 +1198,9 @@
                 if (downloadAllBtn) {
                     downloadAllBtn.addEventListener('click', async () => {
                         try {
-                            const JSZip = window.JSZip;
-                            if (!JSZip) {
-                                const script = document.createElement('script');
-                                script.src =
-                                'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-                                await new Promise((res, rej) => {
-                                    script.onload = res;
-                                    script.onerror = rej;
-                                    document.head.appendChild(script);
-                                });
+                            if (typeof JSZip === 'undefined') {
+                                showToast('JSZip not loaded. Download individually.');
+                                return;
                             }
                             const zip = new JSZip();
                             for (const [key, g] of Object.entries(state.generatedBlobs)) {
@@ -1211,6 +1257,22 @@
                 state.logs = [];
             });
 
+            /* ─── Library checks ─── */
+            function checkLibraries() {
+                const missing = [];
+                if (typeof pdfjsLib === 'undefined') missing.push('PDF.js');
+                if (typeof PDFLib === 'undefined') missing.push('pdf-lib');
+                if (typeof Tesseract === 'undefined') missing.push('Tesseract.js');
+                if (typeof JSZip === 'undefined') missing.push('JSZip');
+                if (missing.length) {
+                    console.warn('Missing libraries:', missing.join(', '));
+                    setProgress(0, 'Loading libraries...');
+                } else {
+                    console.log('All libraries loaded');
+                }
+            }
+            checkLibraries();
+
             /* ─── Init ─── */
             console.log('PDF Language Sorter ready');
             setProgress(0, 'Ready');
@@ -1218,4 +1280,5 @@
         })();
     </script>
 </body>
+</html>
 </html>
